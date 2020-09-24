@@ -26,7 +26,7 @@ SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
 DECLARE @SPID INT = NULL,
 	@ShowBlocksOnly bit = 0,
 	@UserLogin varchar(255) = NULL,
-	@DBName varchar(255) = NULL,
+	@DBName varchar(255) = 'XMART_4',
 	@CommandType varchar(255) = NULL, --'RESTORE DATABASE', -- 'KILLED'
 	@Status varchar(255) = NULL, --'runnable'
 	@UserOnly bit = 0
@@ -104,23 +104,23 @@ SELECT DISTINCT
  --   con.num_reads AS ConnectionReads,
 	--con.client_net_address AS ClientAddress,
  --   con.auth_scheme AS Authentication,
-    CASE WHEN ses.program_name LIKE 'SQLAgent - TSQL JobStep (Job % : Step%' THEN
-		(	SELECT
-				'Job : ' + ISNULL(j.name, 'NULL') + ' (Step ' + CONVERT(VARCHAR(10), js.step_id) + ' - ' + ISNULL(js.step_name, 'NULL') + ')'
-			FROM
-				msdb.dbo.sysjobs j
-			INNER JOIN
-				msdb.dbo.sysjobsteps js
-			ON
-				j.job_id = js.job_id
-			WHERE
-				j.job_id = CONVERT(uniqueidentifier, CONVERT(varbinary(MAX), CONVERT(varchar(255), LEFT(REPLACE(ses.program_name, 'SQLAgent - TSQL JobStep (Job ', ''), CHARINDEX(':', REPLACE(ses.program_name, 'SQLAgent - TSQL JobStep (Job ', ''))-1)), 1))
-			AND
-				js.step_id = CONVERT(int, REPLACE(SUBSTRING(ses.program_name, CHARINDEX(': Step ', ses.program_name) + 7, 1000), ')', ''))
-		)
-	ELSE
-		ses.program_name
-	END AS ProgramName,
+ --   CASE WHEN ses.program_name LIKE 'SQLAgent - TSQL JobStep (Job % : Step%' THEN
+	--	(	SELECT
+	--			'Job : ' + ISNULL(j.name, 'NULL') + ' (Step ' + CONVERT(VARCHAR(10), js.step_id) + ' - ' + ISNULL(js.step_name, 'NULL') + ')'
+	--		FROM
+	--			msdb.dbo.sysjobs j
+	--		INNER JOIN
+	--			msdb.dbo.sysjobsteps js
+	--		ON
+	--			j.job_id = js.job_id
+	--		WHERE
+	--			j.job_id = CONVERT(uniqueidentifier, CONVERT(varbinary(MAX), CONVERT(varchar(255), LEFT(REPLACE(ses.program_name, 'SQLAgent - TSQL JobStep (Job ', ''), CHARINDEX(':', REPLACE(ses.program_name, 'SQLAgent - TSQL JobStep (Job ', ''))-1)), 1))
+	--		AND
+	--			js.step_id = CONVERT(int, REPLACE(SUBSTRING(ses.program_name, CHARINDEX(': Step ', ses.program_name) + 7, 1000), ')', ''))
+	--	)
+	--ELSE
+		ses.program_name AS ProgramName,
+--	END AS ProgramName,
 	CASE   
 		WHEN der.[statement_start_offset] > 0 THEN  
 			--The start of the active command is not at the beginning of the full command text 
