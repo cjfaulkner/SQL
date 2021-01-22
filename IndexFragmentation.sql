@@ -5,7 +5,8 @@ DECLARE @TableName VARCHAR(255)
 DECLARE @SchemaName VARCHAR(255)
 DECLARE @IndexName VARCHAR(255)
 DECLARE @FragThreshold float = 80 -- To stop rebuilds set this to 110
-DECLARE @SchemaFilter VARCHAR(255) = 'wiise_store'
+DECLARE @SchemaFilter VARCHAR(255) = 'ncov_store'
+DECLARE @Rebuild BIT = 0
 
 SELECT
 	dbschemas.[name] as 'SchemaName',
@@ -41,7 +42,7 @@ ORDER BY
 
 SELECT * FROM #IndexBuild
 
-WHILE (SELECT COUNT(*) FROM #IndexBuild) > 0
+WHILE ((SELECT COUNT(*) FROM #IndexBuild) > 0) AND (@Rebuild = 1)
 BEGIN
 	SELECT TOP 1
 		@TableName = TableName,
@@ -67,4 +68,4 @@ BEGIN
 		IndexName = @IndexName	
 END
 
---UPDATE STATISTICS ncov_store.NCOV_LINELIST
+-- ALTER TABLE [ncov_store].[FACT_DAY_AGG] REBUILD;

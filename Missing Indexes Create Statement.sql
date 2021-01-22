@@ -11,6 +11,8 @@
 
 ****************************************************************************************************************************************************/
 
+DECLARE @SchemaName varchar(128) = NULL
+
 ;WITH CTE_Top500 AS
 (
 	SELECT TOP (500)
@@ -72,4 +74,7 @@ SELECT
 		CTE_Top500 ct500
 	ON
 		ct500.group_handle = migs.group_handle
-ORDER BY 1, 2 DESC, 3 DESC, 6, 7, 8
+	WHERE
+		so.SchemaName = ISNULL(@SchemaName, so.SchemaName)
+
+ORDER BY 2 DESC, 3 DESC, 6, 7, 8

@@ -13,12 +13,9 @@
 		Date		Author          Version	Description
 		----------	--------------- -------	------------------------------------
 		2011-??-??	Chris Faulkner	1.00	Created
-sp_who2 115
-backup log Expedient with truncate_only
 
-KILL 347
-
-238036118
+select TOP 100 * from V_BATCH
+ORDER BY ID DESC
 ****************************************************************************************************************************************************/
 -- 100747359 kill 85
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
@@ -67,14 +64,19 @@ SELECT DISTINCT
 	ses.status AS Status,
 	ses.login_name AS Login,
 	ses.host_name AS Host,
-	wt.blocking_session_id AS BlockBy,
---	COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id) AS WaitingFor,
---	wt.blocking_Session_ID AS WaitingFor, --, td.Session_ID, td.request_session_id) AS WaitingFor,
---	td.LockObjectType,
---	td.LockObject,
---	td.request_owner_type AS LockType,
---	td.BlockingSessionID,
+--	wt.blocking_session_id AS BlockBy,
+	CASE
+		WHEN
+			COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id) = ses.session_id THEN NULL
+		ELSE
+			COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id)
+	END AS WaitingFor,
 	ses.open_transaction_count AS open_tran,
+--	wt.blocking_Session_ID AS WaitingFor, --, td.Session_ID, td.request_session_id) AS WaitingFor,
+	td.LockObjectType,
+	td.LockObject,
+	td.request_owner_type AS LockType,
+--	td.BlockingSessionID,
 	der.command AS CommandType,
 	--der.command,
 	der.status,
@@ -155,7 +157,7 @@ SELECT DISTINCT
 											END - sp.stmt_start)/2) AS SQLStatement
 	*/
 FROM
-	sys.dm_exec_sessions ses
+	sys.dm_exec_sessions ses WITH (NOLOCK)
 LEFT JOIN
 	sys.dm_exec_requests as der WITH (NOLOCK)
 ON 
@@ -172,7 +174,7 @@ ON
 	wt.blocking_task_address = block_der.task_address
 OUTER APPLY
 	sys.dm_exec_sql_text(der.sql_handle) as qt
-/*
+
 LEFT JOIN
 (	SELECT
 		wt.session_id,
@@ -180,7 +182,9 @@ LEFT JOIN
 		resource_type + ISNULL('-' + NULLIF(resource_subtype, ''), '')  AS LockObjectType,
 		CASE resource_type
 			WHEN 'OBJECT' THEN
-				DB_NAME(resource_database_id) + '..' + object_name(resource_associated_entity_id, resource_database_id)
+				DB_NAME(resource_database_id) +
+				'.' + object_schema_name(resource_associated_entity_id, resource_database_id) +
+				'.' + object_name(resource_associated_entity_id, resource_database_id)
 			WHEN 'DATABASE' THEN
 				DB_NAME(resource_database_id)
 			ELSE
@@ -201,8 +205,8 @@ LEFT JOIN
 		tlo.resource_type IN ('OBJECT', 'DATABASE')
 ) td
 ON
-	td.request_session_id = sp.SPID
-*/
+	td.request_session_id = ses.session_id
+
 WHERE
 (	ses.session_id = ISNULL(@SPID, ses.session_id)
 	OR
@@ -227,7 +231,8 @@ AND
 )
 ORDER BY 
 --	sp.blocked DESC,
-	wt.blocking_Session_ID DESC,
+--	wt.blocking_Session_ID DESC,
+	WaitingFor DESC,
 	--CASE WHEN COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id) = sp.SPID THEN 
 	--		COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id) / 10.0
 	--	ELSE COALESCE(wt.blocking_Session_ID, td.Session_ID, td.request_session_id)
@@ -405,4 +410,15 @@ objectlock lockPartition=22 objid=1534016596 subresource=FULL dbid=18 id=lock54c
 select object_name(1534016596, 18)
 
 CASE WHEN LEFT(WaitReso
+*/
+/*
+ --DeleteStoreRowsAction
+ DELETE [storeArchive]
+ FROM
+ (SELECT
+	[Sys_ID]
+FROM [ncov].[FACT_DAY_AGG]
+) AS [store]
+JOIN [ncov_store].[FACT_DAY_AGG] [storeArchive]
+ON [store].[Sys_ID] = [storeArchive].[Sys_HeadID]
 */
