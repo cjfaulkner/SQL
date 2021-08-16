@@ -10,8 +10,10 @@
 		2011-??-??	Chris Faulkner	1.00	Created
 
 ****************************************************************************************************************************************************/
+CREATE OR ALTER VIEW dbo_c.UnusedIndexes
+AS
 SELECT
-	schema_name(o.schema_id) + '.' + o.name AS TableName,
+	c.name + '.' + o.name AS TableName,
 	i.name AS IndexName,
 	i.index_id AS IndexID,
 	s.user_seeks + s.user_scans + s.user_lookups AS Reads,
@@ -23,21 +25,21 @@ SELECT
 		WHEN s.user_updates < 1 THEN 100
 		ELSE 1.00 * (s.user_seeks + s.user_scans + s.user_lookups) / s.user_updates
 	END AS Reads_per_Write,
-	'DROP INDEX ' + QUOTENAME(i.name) + ' ON ' + QUOTENAME(c.name) + '.' + QUOTENAME(OBJECT_NAME(s.object_id)) as 'drop statement'
+	'DROP INDEX [' + i.name + '] ON [' + c.name + '].[' + o.name + ']' as 'drop statement'
 FROM
-	sys.dm_db_index_usage_stats s
+	sys.dm_db_index_usage_stats s WITH (NOLOCK)
 INNER JOIN
-	sys.indexes i
+	sys.indexes i WITH (NOLOCK)
 ON
 	i.index_id = s.index_id
 AND
 	s.object_id = i.object_id 
 INNER JOIN
-	sys.objects o
+	sys.objects o WITH (NOLOCK)
 ON
 	s.object_id = o.object_id
 INNER JOIN
-	sys.schemas c
+	sys.schemas c WITH (NOLOCK)
 ON
 	o.schema_id = c.schema_id 
 INNER JOIN
@@ -46,7 +48,7 @@ INNER JOIN
 		p.object_id,
 		SUM(p.rows) as Rows
 	FROM
-		sys.partitions p
+		sys.partitions p WITH (NOLOCK)
 	GROUP BY
 		p.index_id,
 		p.object_id
@@ -56,7 +58,7 @@ ON
 AND
 	s.object_id = p.object_id
 WHERE
-	OBJECTPROPERTY(s.object_id,'IsUserTable') = 1
+	o.type_desc = 'USER_TABLE'
 AND
 	s.database_id = DB_ID() 
 AND
@@ -77,8 +79,4 @@ AND
 		((s.last_user_scan IS NOT NULL) AND (datediff(day, s.last_user_scan, getdate()) > 30))
 	)
 )
-ORDER BY
-	TableName,
-	Reads_per_Write,
-	IndexName
 

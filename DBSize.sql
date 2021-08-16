@@ -21,7 +21,7 @@ DECLARE @DBTotalSize_MB float
                 ELSE 0
             END
             ) AS TableRowCount
-	FROM sys.dm_db_partition_stats ps
+	FROM sys.dm_db_partition_stats ps WITH (NOLOCK)
     GROUP BY
         object_id
 )
@@ -37,7 +37,7 @@ INTO #DBStats
 FROM
     CTE_TableStats ts
 INNER JOIN
-    sys.objects o
+    sys.objects o WITH (NOLOCK)
 ON
     o.object_id = ts.object_id
 ORDER BY
