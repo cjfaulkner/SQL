@@ -11,7 +11,7 @@
 
 ****************************************************************************************************************************************************/
 
-DECLARE @FullTableName VARCHAR(255) = 'tableName'
+DECLARE @FullTableName VARCHAR(255) = '[dbo].[TABLE_FIELD]'
 DECLARE @TargetSchema VARCHAR(255) = 'staging'
 DECLARE @SQL VARCHAR(MAX), @ColumnNames VARCHAR(MAX) = NULL
 
@@ -27,8 +27,10 @@ DECLARE
 	@TableSchema VARCHAR(50) = NULL,
 	@TableName	VARCHAR(50) = NULL,
 	@CreateScript varchar(MAX) = NULL,
+	@Debug bit = 0,
 	@LastDotPlace int
 
+	SET @FullTableName = REPLACE(REPLACE(@FullTableName, '[', ''), ']', '')
 	SET @LastDotPlace = LEN(@FullTableName) - CHARINDEX('.', REVERSE(@FullTableName)) + 1
 
 	IF @LastDotPlace <> LEN(@FullTableName) + 1
@@ -50,6 +52,9 @@ DECLARE
 			@TableName = @FullTableName,
 			@TableSchema = 'dbo'
 	END
+
+IF @Debug = 1
+	SELECT @TableName AS '@TableName', @TableSchema AS '@TableSchema'
 
 
 DECLARE @SourceTableName varchar(MAX)
@@ -79,213 +84,215 @@ ISNULL('(' +
 						ELSE 'NOT NULL'
 					END + '
 '
-
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME= @TableName
 AND TABLE_SCHEMA = @TableSchema
 ORDER BY ORDINAL_POSITION
 
-
-
 SET @SQL = @SQL + @ColumnNames + ')
 GO
 '
 
-;WITH CTE_IndexColumnBuilder AS
-(	SELECT
-		ic.object_id,
-		ic.index_id,
-		CONVERT(VARCHAR(MAX), c.name) AS NonIncludedColumnList,
-		CONVERT(VARCHAR(MAX), NULL) AS IncludedColumnList,
-		ic.index_column_id
+IF @Debug = 1
+	SELECT @ColumnNames AS '@ColumnNames'
+
+
+;WITH CTE_IndexColumns AS
+(
+	SELECT 
+		i.name as IndexName,
+		CASE WHEN i.is_unique = 1 THEN ' UNIQUE ' ELSE '' END + i.type_desc AS IndexType,
+		STUFF( (SELECT ',' + c.name
+				FROM sys.columns c
+				INNER JOIN sys.index_columns ic
+				ON c.object_id = ic.OBJECT_ID
+				AND c.column_id = ic.column_id
+				AND ic.is_included_column = 0
+				WHERE ic.object_id = i.object_id
+				AND	ic.index_id = i.index_id
+				ORDER BY ic.key_ordinal
+				FOR XML PATH ('')), 1, 1, '') AS IndexColumns,
+		STUFF( (SELECT ',' + c.name
+				FROM sys.columns c
+				INNER JOIN sys.index_columns ic
+				ON c.object_id = ic.OBJECT_ID
+				AND c.column_id = ic.column_id
+				AND ic.is_included_column = 1
+				WHERE ic.object_id = i.object_id
+				AND	ic.index_id = i.index_id
+				ORDER BY ic.key_ordinal
+				FOR XML PATH ('')), 1, 1, '') AS IncludedColumns
 	FROM
 		sys.indexes i
-	INNER JOIN
-		sys.index_columns ic
-	ON
-		ic.object_id = i.object_id
-	AND
-		ic.index_id = i.index_id
-	INNER JOIN
-		sys.columns c
-	ON
-		ic.object_id = c.object_id
-	AND
-		ic.column_id = c.column_id
 	WHERE
-		ic.index_column_id = 1
+		object_name(i.object_id) = @TableName
+	AND
+		object_schema_name(i.object_id) = @TableSchema
 	AND
 		i.is_primary_key = 0
 	AND
 		i.is_unique_constraint = 0
-	UNION ALL
-	SELECT
-		nic.object_id,
-		nic.index_id,
-		CONVERT(VARCHAR(MAX), NonIncludedColumnList + CASE WHEN is_included_column = 0 THEN ',' + c.name ELSE '' END) AS NonIncludedColumnList,
-		CONVERT(VARCHAR(MAX), ISNULL(IncludedColumnList + ',', '') + CASE WHEN is_included_column = 1 THEN c.name ELSE '' END) AS IncludedColumnList,
-		ic.index_column_id
-	FROM
-		CTE_IndexColumnBuilder nic
-	INNER JOIN
-		sys.index_columns ic
-	ON
-		nic.object_id = ic.object_id
-	AND
-		nic.index_id = ic.index_id
-	INNER JOIN
-		sys.columns c
-	ON
-		ic.object_id = c.object_id
-	AND
-		ic.column_id = c.column_id
-	WHERE
-		ic.index_column_id = nic.index_column_id + 1
-), CTE_IndexColumnBuilderMax AS
-(
-	SELECT
-		object_id,
-		index_id,
-		MAX(index_column_id) AS index_column_id
-	FROM
-		CTE_IndexColumnBuilder
-	GROUP BY
-		object_id,
-		index_id
-
-), CTE_IndexColumns AS
-(
-	SELECT
-		nicb.object_id,
-		nicb.index_id,
-		i.name COLLATE DATABASE_DEFAULT AS IndexName,
-		nicb.NonIncludedColumnList,
-		nicb.IncludedColumnList,
-		i.is_unique,
-		i.type_desc COLLATE DATABASE_DEFAULT AS IndexType
-	FROM
-		CTE_IndexColumnBuilder nicb
-	INNER JOIN
-		CTE_IndexColumnBuilderMax nicbm
-	ON
-		nicb.object_id = nicbm.object_id
-	AND
-		nicb.index_id = nicbm.index_id
-	AND
-		nicb.index_column_id = nicbm.index_column_id
-	INNER JOIN
-		sys.indexes i
-	ON
-		nicb.object_id = i.object_id
-	AND
-		nicb.index_id = i.index_id
 )
 SELECT @SQL = @SQL + ISNULL('
-	CREATE ' +
-	CASE WHEN ic.is_unique = 1 THEN ' UNIQUE ' ELSE '' END + ic.IndexType +
-	' INDEX ' + ic.IndexName + ' ' +
-	' ON [' + @TargetSchema + '].[' + @TableName + '] (' + ic.NonIncludedColumnList + ')' +
-	CASE WHEN ISNULL(ic.IncludedColumnList, '') <> '' THEN ' INCLUDE (' + ic.IncludedColumnList + ')' ELSE '' END, '')
+	CREATE ' + IndexType + ' INDEX ' + ic.IndexName + ' ' +
+	' ON [' + @TargetSchema + '].[' + @TableName + '] (' + ic.IndexColumns + ')' +
+	ISNULL(' INCLUDE (' + ic.IncludedColumns + ')', ''), '')
 FROM 
 	CTE_IndexColumns ic
-WHERE
-	object_name(ic.object_id) = @TableName
-AND
-	object_schema_name(ic.object_id) = @TableSchema
 
+IF @Debug = 1
+	SELECT @SQL AS 'Indexes added'
 
-;WITH CTE_IndexColumnBuilder AS
-(	SELECT
-		ic.object_id,
-		ic.index_id,
-		CONVERT(VARCHAR(MAX), c.name) AS ColumnList,
-		ic.index_column_id
+;WITH CTE_IndexColumns AS
+(
+	SELECT 
+		i.name as IndexName,
+		i.type_desc AS IndexType,
+		STUFF( (SELECT ',' + c.name
+				FROM sys.columns c
+				INNER JOIN sys.index_columns ic
+				ON c.object_id = ic.OBJECT_ID
+				AND c.column_id = ic.column_id
+				AND ic.is_included_column = 0
+				WHERE ic.object_id = i.object_id
+				AND	ic.index_id = i.index_id
+				ORDER BY ic.key_ordinal
+				FOR XML PATH ('')), 1, 1, '') AS IndexColumns
 	FROM
 		sys.indexes i
-	INNER JOIN
-		sys.index_columns ic
-	ON
-		ic.object_id = i.object_id
-	AND
-		ic.index_id = i.index_id
-	INNER JOIN
-		sys.columns c
-	ON
-		ic.object_id = c.object_id
-	AND
-		ic.column_id = c.column_id
 	WHERE
-		ic.index_column_id = 1
+		object_name(i.object_id) = @TableName
+	AND
+		object_schema_name(i.object_id) = @TableSchema
 	AND
 		i.is_primary_key = 1
-	UNION ALL
-	SELECT
-		nic.object_id,
-		nic.index_id,
-		CONVERT(VARCHAR(MAX), ColumnList + CASE WHEN is_included_column = 0 THEN ',' + c.name ELSE '' END) AS ColumnList,
-		ic.index_column_id
-	FROM
-		CTE_IndexColumnBuilder nic
-	INNER JOIN
-		sys.index_columns ic
-	ON
-		nic.object_id = ic.object_id
 	AND
-		nic.index_id = ic.index_id
-	INNER JOIN
-		sys.columns c
-	ON
-		ic.object_id = c.object_id
-	AND
-		ic.column_id = c.column_id
-	WHERE
-		ic.index_column_id = nic.index_column_id + 1
-), CTE_IndexColumnBuilderMax AS
-(
-	SELECT
-		object_id,
-		index_id,
-		MAX(index_column_id) AS index_column_id
-	FROM
-		CTE_IndexColumnBuilder
-	GROUP BY
-		object_id,
-		index_id
-
-), CTE_IndexColumns AS
-(
-	SELECT
-		nicb.object_id,
-		nicb.index_id,
-		i.name COLLATE DATABASE_DEFAULT AS IndexName,
-		nicb.ColumnList,
-		i.type_desc COLLATE DATABASE_DEFAULT AS IndexType
-	FROM
-		CTE_IndexColumnBuilder nicb
-	INNER JOIN
-		CTE_IndexColumnBuilderMax nicbm
-	ON
-		nicb.object_id = nicbm.object_id
-	AND
-		nicb.index_id = nicbm.index_id
-	AND
-		nicb.index_column_id = nicbm.index_column_id
-	INNER JOIN
-		sys.indexes i
-	ON
-		nicb.object_id = i.object_id
-	AND
-		nicb.index_id = i.index_id
+		i.is_unique_constraint = 0
 )
 SELECT @SQL = @SQL + ISNULL('ALTER TABLE [' + @TargetSchema + '].[' + @TableName + '] ADD CONSTRAINT ' + ic.IndexName + 
 	' PRIMARY KEY ' + ic.IndexType +
-	' (' + ic.ColumnList + ')', '')
+	' (' + ic.IndexColumns + ')', '')
 FROM 
 	CTE_IndexColumns ic
-WHERE
-	object_name(ic.object_id) = @TableName
+
+IF @Debug = 1
+	SELECT @SQL AS 'PK added'
+
+;WITH CTE_FKCOLS AS
+(
+	SELECT
+		fk.name AS FK_Name,
+		fk.parent_object_id,
+		fk.referenced_object_id,
+		'[' + cc.name + ']' AS ConstraintColumn,
+		'[' + rc.name + ']' AS ReferencedColumn
+	FROM
+		sys.foreign_keys fk
+	INNER JOIN
+		sys.foreign_key_columns fkc
+	ON
+		fk.object_id = fkc.constraint_object_id
+	AND
+		fkc.parent_object_id = fk.parent_object_id
+	AND
+		fkc.referenced_object_id = fk.referenced_object_id
+	INNER JOIN
+		sys.columns cc
+	ON
+		cc.object_id = fkc.parent_object_id
+	AND
+		cc.column_id = fkc.parent_column_id
+	INNER JOIN
+		sys.columns rc
+	ON
+		rc.object_id = fkc.referenced_object_id
+	AND
+		rc.column_id = fkc.referenced_column_id
+	WHERE
+		object_name(fk.parent_object_id) = @TableName
+	AND
+		object_schema_name(fk.parent_object_id) = @TableSchema
+
+), CTE_FK_COLLIST AS
+(
+SELECT
+	fkc.FK_Name,
+	fkc.parent_object_id,
+	fkc.referenced_object_id,
+	STUFF(
+			(SELECT ',' + fkcc.ConstraintColumn
+			FROM CTE_FKCOLS fkcc
+			WHERE fkcc.FK_Name = fkc.FK_NAME
+			AND fkcc.parent_object_id = fkc.parent_object_id
+			AND fkcc.referenced_object_id = fkcc.referenced_object_id
+			AND fkcc.ReferencedColumn = fkc.ReferencedColumn
+			FOR XML PATH ('')), 1, 1, '') AS ConstraintColumns,
+	STUFF(
+			(SELECT ',' + fkcc.ReferencedColumn 
+			FROM CTE_FKCOLS fkcc
+			WHERE fkcc.FK_Name = fkc.FK_Name
+			AND fkcc.parent_object_id = fkc.parent_object_id
+			AND fkcc.referenced_object_id = fkcc.referenced_object_id
+			AND fkcc.ConstraintColumn = fkc.ConstraintColumn
+			FOR XML PATH ('')), 1, 1, '') AS ReferencedColumns
+	FROM
+		CTE_FKCOLS fkc
+)
+SELECT @SQL = @SQL + 
+	ISNULL('ALTER TABLE [' + @TargetSchema + '].[' + @TableName + '] ADD CONSTRAINT [' + fk.FK_Name + ']' + 
+	' FOREIGN KEY (' + fk.ConstraintColumns + ')' +
+	' REFERENCES [' + object_schema_name(fk.referenced_object_id) + '].[' + object_name(fk.referenced_object_id) + '] ' +
+	'(' + fk.ReferencedColumns + ')', '') + '
+'
+FROM CTE_FK_COLLIST fk
+
+IF @Debug = 1
+	SELECT @SQL AS 'FK added'
+
+SELECT @SQL = @SQL + 
+	ISNULL('ALTER TABLE [' + @TargetSchema + '].[' + @TableName + '] ADD CONSTRAINT [' + dc.Name + ']' + 
+	' DEFAULT ' + dc.definition + ' FOR [' + c.name + ']
+', '')
+FROM
+	sys.default_constraints dc
+INNER JOIN
+	sys.columns c
+ON
+	c.object_id = dc.parent_object_id
 AND
-	object_schema_name(ic.object_id) = @TableSchema
+	c.column_id = dc.parent_column_id
+WHERE
+	object_name(dc.parent_object_id) = @TableName
+AND
+	object_schema_name(dc.parent_object_id) = @TableSchema
+
+SELECT @SQL = @SQL + 
+	ISNULL('ALTER TABLE [' + @TargetSchema + '].[' + @TableName + '] ADD CONSTRAINT [' + cc.Name + ']' + 
+	' CHECK ' + cc.definition + '
+', '')
+FROM
+	sys.check_constraints cc
+WHERE
+	object_name(cc.parent_object_id) = @TableName
+AND
+	object_schema_name(cc.parent_object_id) = @TableSchema
+
+SELECT @SQL = @SQL + 'EXEC sys.sp_addextendedproperty @name=N''' + lep.name +
+	''', @value=N''' + CONVERT(varchar(255), lep.value) +
+	''', @level0type=N''SCHEMA'',@level0name=N''' + @TargetSchema + ''',
+	@level1type=N''TABLE'',@level1name=N''' + @TableName + '''' +
+	CASE
+		WHEN t.a IS NOT NULL THEN ',@level2type=N''' + lep.objtype + ''',@level2name=N''' + lep.objname +''''
+	ELSE
+		''
+	END + '
+'
+FROM (VALUES ('COLUMN'), ('CONSTRAINT'), ('EVENT NOTIFICATION'), ('INDEX'), ('PARAMETER'), ('TRIGGER'), (NULL)) t(a)
+CROSS APPLY
+	fn_listextendedproperty(NULL, 'SCHEMA', @TableSchema, 'TABLE', @TableName, t.a, NULL) lep
+
+
+
 
 SET @SQL = @SQL + '
 '
