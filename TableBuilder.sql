@@ -11,7 +11,7 @@
 
 ****************************************************************************************************************************************************/
 
-DECLARE @FullTableName VARCHAR(255) = '[dbo].[TABLE_FIELD]'
+DECLARE @FullTableName VARCHAR(255) = 'supply_chain_lax.FACT_OXYGEN_115935_with_issues'
 DECLARE @TargetSchema VARCHAR(255) = 'staging'
 DECLARE @SQL VARCHAR(MAX), @ColumnNames VARCHAR(MAX) = NULL
 
@@ -70,19 +70,23 @@ GO
 SET @SQL = @SQL + 'CREATE TABLE [' + @TargetSchema + '].[' + @TableName + ']
 ( '
 
-SELECT @ColumnNames = ISNULL(@ColumnNames + ',', '') + COLUMN_NAME + ' ' + DATA_TYPE +
+SELECT @ColumnNames = ISNULL(@ColumnNames + ',', '') + '[' + COLUMN_NAME + '] ' + DATA_TYPE +
 ISNULL('(' +
-			ISNULL(CONVERT(VARCHAR(8), CHARACTER_MAXIMUM_LENGTH),
+		CASE
+			WHEN CHARACTER_MAXIMUM_LENGTH = -1 THEN 'MAX'
+			ELSE
+				ISNULL(CONVERT(VARCHAR(8), CHARACTER_MAXIMUM_LENGTH),
                     CASE
 						WHEN ISNULL(NUMERIC_SCALE, 0) <> 0 THEN
 							CONVERT(VARCHAR(8), NUMERIC_PRECISION) + ',' + CONVERT(VARCHAR(8), NUMERIC_SCALE)
 						ELSE
 							NULL
-						END) + ') ', ' ') +
-					CASE IS_NULLABLE 
-						WHEN 'YES' THEN ' NULL '
-						ELSE 'NOT NULL'
-					END + '
+					END)
+			END + ') ', ' ') +
+			CASE IS_NULLABLE 
+				WHEN 'YES' THEN ' NULL '
+				ELSE 'NOT NULL'
+			END + '
 '
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME= @TableName
