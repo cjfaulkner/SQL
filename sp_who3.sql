@@ -31,6 +31,9 @@ select * from sys.schemas
 objectlock lockPartition=0 objid=1667549664 subresource=FULL dbid=39 id=lock2e0342bed80 mode=X associatedObjectId=1667549664
 dbcc inputbuffer(131)
 
+cross apply sys.dm_exec_input_buffer(s.session_id,null) ib
+
+
 ****************************************************************************************************************************************************/
 -- 100747359 kill 81
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
@@ -48,6 +51,7 @@ SET @query =
 		 union all '
   from sys.databases d
   where database_id > 4
+  AND d.name IN ('XMART_4', 'XMART')
   for xml path(''), type).value('.', 'nvarchar(max)');
 
 set @query = left(@query,len(@query)-10);
@@ -160,9 +164,16 @@ SELECT DISTINCT
         END  
      END AS [executing statement],
 	qt.Text AS [full statement],
+	ib.event_info,
+	ib.event_type,
+	ib.parameters
 	ses.session_id
 FROM
 	sys.dm_exec_sessions ses WITH (NOLOCK)
+
+cross apply
+	sys.dm_exec_input_buffer(ses.session_id,null) ib
+
 LEFT JOIN
 	sys.databases dses WITH (NOLOCK)
 ON
@@ -259,8 +270,8 @@ AND
 AND
 	ses.host_name = ISNULL(@Host, ses.host_name)
 ORDER BY 
-	WaitTime DESC,
 	ses.session_id,
+	WaitTime DESC,
 	WaitingFor
 
 /*

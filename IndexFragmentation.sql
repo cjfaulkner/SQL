@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 DROP TABLE IF EXISTS #IndexBuild
 
 DECLARE @SQL VARCHAR(MAX)
@@ -13,6 +12,7 @@ SELECT
 	dbschemas.[name] as 'SchemaName',
 	dbtables.[name] as 'TableName',
 	dbindexes.[name] as 'IndexName',
+	dbindexes.type_desc AS 'IndexType',
 	indexstats.avg_fragmentation_in_percent,
 	indexstats.page_count
 INTO #IndexBuild
@@ -42,7 +42,7 @@ ORDER BY
 	indexstats.avg_fragmentation_in_percent DESC
 
 SELECT * FROM #IndexBuild
-
+/*
 WHILE ((SELECT COUNT(*) FROM #IndexBuild) > 0) AND (@Rebuild = 1)
 BEGIN
 	SELECT TOP 1
@@ -70,7 +70,6 @@ BEGIN
 END
 
 -- ALTER TABLE [ncov_store].[FACT_DAY_AGG] REBUILD;
-=======
 SELECT dbschemas.[name] as 'Schema',
 dbtables.[name] as 'Table',
 dbindexes.[name] as 'Index',
@@ -85,7 +84,7 @@ WHERE indexstats.database_id = DB_ID()
 AND dbschemas.[name] = 'ncov_store'
 AND dbtables.[name] = 'NCOV_LINELIST'
 ORDER BY indexstats.avg_fragmentation_in_percent desc
-
+*/
 /*
 ALTER INDEX IX__Sys_IsCurrent
 ON ncov_store.NCOV_LINELIST REBUILD
@@ -102,4 +101,3 @@ ON ncov_store.NCOV_LINELIST REBUILD
 */
 
 --UPDATE STATISTICS ncov_store.NCOV_LINELIST
->>>>>>> 81cf5a4366975275b21e3bf78990e19299e87b91
