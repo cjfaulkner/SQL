@@ -11,7 +11,7 @@
 
 ****************************************************************************************************************************************************/
 
-DECLARE @FullTableName VARCHAR(255) = 'supply_chain_lax.FACT_OXYGEN_115935_with_issues'
+DECLARE @FullTableName VARCHAR(255) = 'training_cf_store.REF_COUNTRY'
 DECLARE @TargetSchema VARCHAR(255) = 'staging'
 DECLARE @SQL VARCHAR(MAX), @ColumnNames VARCHAR(MAX) = NULL
 
@@ -19,52 +19,47 @@ SET @SQL = 'IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name=''' + @TargetSch
 BEGIN
 	EXEC(''CREATE SCHEMA ' + @TargetSchema + ''')
 END;
-GO
+
 '
 
 DECLARE
-	@DatabaseName VARCHAR(50) = NULL,
-	@TableSchema VARCHAR(50) = NULL,
+--	@DatabaseName VARCHAR(50) = NULL,
+	@TableSchema VARCHAR(50) = 'dbo',
 	@TableName	VARCHAR(50) = NULL,
-	@CreateScript varchar(MAX) = NULL,
-	@Debug bit = 0,
-	@LastDotPlace int
+	@Debug bit = 0, @AutoCreate bit = 1
 
 	SET @FullTableName = REPLACE(REPLACE(@FullTableName, '[', ''), ']', '')
-	SET @LastDotPlace = LEN(@FullTableName) - CHARINDEX('.', REVERSE(@FullTableName)) + 1
+	DECLARE @ParseTableName TABLE (ID INTEGER NOT NULL IDENTITY(1,1), TableNamePart VARCHAR(255) NOT NULL) 
+	DECLARE @TablePartCount INTEGER = 0
 
-	IF @LastDotPlace <> LEN(@FullTableName) + 1
-	BEGIN
-		SET @TableSchema = LEFT(@FullTableName, @LastDotPlace - 1)
-		SET @TableName = SUBSTRING(@FullTableName, @LastDotPlace + 1, 9999)
+	INSERT INTO @ParseTableName
+	(
+		TableNamePart
+	)
+	SELECT [value]
+	FROM STRING_SPLIT(@FullTableName, '.')
 
-		SET @LastDotPlace = LEN(@TableSchema) - CHARINDEX('.', REVERSE(@TableSchema)) + 1
+	SELECT @TablePartCount = COUNT(*)
+	FROM @ParseTableName
 
-		IF @LastDotPlace <> LEN(@TableSchema) + 1
-		BEGIN
-			SET @DataBaseName = LEFT(@TableSchema, @LastDotPlace - 1)
-			SET @TableSchema = SUBSTRING(@TableSchema, @LastDotPlace + 1, 9999)
-		END
-	END
-	ELSE
-	BEGIN
-		SELECT
-			@TableName = @FullTableName,
-			@TableSchema = 'dbo'
-	END
+	SELECT @TableName = TableNamePart
+	FROM @ParseTableName 
+	WHERE ID = @TablePartCount
+
+	SELECT @TableSchema = TableNamePart
+	FROM @ParseTableName
+	WHERE ID = @TablePartCount - 1
 
 IF @Debug = 1
-	SELECT @TableName AS '@TableName', @TableSchema AS '@TableSchema'
+	SELECT @TableName AS [@TableName], @TableSchema AS [@TableSchema]
 
-
-DECLARE @SourceTableName varchar(MAX)
 
 SET @SQL = @SQL + 'IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ''' + @TargetSchema +
 ''' AND TABLE_NAME = ''' + @TableName + ''' AND TABLE_TYPE = ''BASE TABLE'')
 BEGIN
 	DROP TABLE [' + @TargetSchema + '].[' + @TableName + ']
 END;
-GO
+
 '
 
 SET @SQL = @SQL + 'CREATE TABLE [' + @TargetSchema + '].[' + @TableName + ']
@@ -94,11 +89,11 @@ AND TABLE_SCHEMA = @TableSchema
 ORDER BY ORDINAL_POSITION
 
 SET @SQL = @SQL + @ColumnNames + ')
-GO
+
 '
 
 IF @Debug = 1
-	SELECT @ColumnNames AS '@ColumnNames'
+	SELECT @ColumnNames AS [@ColumnNames]
 
 
 ;WITH CTE_IndexColumns AS
@@ -145,7 +140,7 @@ FROM
 	CTE_IndexColumns ic
 
 IF @Debug = 1
-	SELECT @SQL AS 'Indexes added'
+	SELECT @SQL AS [Indexes added]
 
 ;WITH CTE_IndexColumns AS
 (
@@ -180,7 +175,7 @@ FROM
 	CTE_IndexColumns ic
 
 IF @Debug = 1
-	SELECT @SQL AS 'PK added'
+	SELECT @SQL AS [PK added]
 
 ;WITH CTE_FKCOLS AS
 (
@@ -251,7 +246,7 @@ SELECT @SQL = @SQL +
 FROM CTE_FK_COLLIST fk
 
 IF @Debug = 1
-	SELECT @SQL AS 'FK added'
+	SELECT @SQL AS [FK added]
 
 SELECT @SQL = @SQL + 
 	ISNULL('ALTER TABLE [' + @TargetSchema + '].[' + @TableName + '] ADD CONSTRAINT [' + dc.Name + ']' + 
@@ -295,10 +290,11 @@ FROM (VALUES ('COLUMN'), ('CONSTRAINT'), ('EVENT NOTIFICATION'), ('INDEX'), ('PA
 CROSS APPLY
 	fn_listextendedproperty(NULL, 'SCHEMA', @TableSchema, 'TABLE', @TableName, t.a, NULL) lep
 
-
-
-
 SET @SQL = @SQL + '
 '
+IF @Debug = 1
+	SELECT @SQL AS [Full Script]
 
-SELECT @SQL
+
+IF @AutoCreate = 1
+	EXEC(@SQL)

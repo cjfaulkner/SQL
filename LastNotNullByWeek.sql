@@ -47,19 +47,13 @@ AND
 GROUP BY tt.ISO3, tt.WeekNo
 )
 SELECT
-	tt.ISO3,
-	tt.WeekNo,
+	lnn.ISO3,
+	lnn.WeekNo,
 	v1.Val1,
 	v2.Val2
 --	SUM(tt.Val) AS Total
 FROM
-	@testtemp tt
-INNER JOIN
 	CTE_LastNotNull lnn
-ON
-	tt.ISO3 = lnn.ISO3
-AND
-	tt.WeekNo = lnn.WeekNo
 INNER JOIN
 	@testtemp v1
 ON

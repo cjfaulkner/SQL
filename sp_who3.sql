@@ -84,7 +84,7 @@ SELECT DISTINCT
 	ses.open_transaction_count AS open_tran,
 	der.command AS CommandType,
 	ISNULL(der.status + ' / ', '') + ses.status AS Status,
---	der.percent_complete,
+	der.percent_complete,
 	qtao.ObjectName,
 	der.logical_reads,
 	der.reads  AS IOReads,
@@ -166,7 +166,7 @@ SELECT DISTINCT
 	qt.Text AS [full statement],
 	ib.event_info,
 	ib.event_type,
-	ib.parameters
+	ib.parameters,
 	ses.session_id
 FROM
 	sys.dm_exec_sessions ses WITH (NOLOCK)

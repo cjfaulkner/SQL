@@ -16,11 +16,11 @@ GO
 		2021-09-15	Chris Faulkner	1.00	Created
 
 ****************************************************************************************************************************************************/
-CREATE VIEW [dbo_c].[AllPermissions] AS
+CREATE OR ALTER VIEW [dbo_c].[AllPermissions] AS
 WITH CTE_AllPermissions AS
 (
 SELECT
-	u.name AS ObjectName,
+	CONVERT(nvarchar(255), u.name) AS ObjectName,
 	u.type_desc AS ObjectType,
 	dp.state_desc AS PermissionState,
 	dp.permission_name AS PermissionName,
@@ -29,7 +29,6 @@ SELECT
 		WHEN 'DATABASE' THEN DB_NAME()
 		WHEN 'SCHEMA' THEN sc.name
 		WHEN 'OBJECT_OR_COLUMN' THEN obj_sch.name + '.' + obj.name + ISNULL('.' + col.name, '')
---		ELSE CONVERT(varchar(10), dp.major_id)
 	END AS TargetObjectName
 FROM
 	sys.database_principals u
@@ -61,7 +60,7 @@ AND
 	col.column_id = dp.minor_id
 UNION
 SELECT
-	u.name AS ObjectName,
+	CONVERT(nvarchar(255), u.name) AS ObjectName,
 	u.type_desc AS ObjectType,
 	'GRANT' AS PermissionState,
 	'MEMBER' AS PermissionName,
